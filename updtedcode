@@ -1,0 +1,155 @@
+import numpy as np
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
+import requests
+
+# -------------------------------
+# Function to get store open/closed status using Google Places API
+# -------------------------------
+def get_store_status(place_id, api_key):
+    url = f"https://maps.googleapis.com/maps/api/place/details/json?place_id={place_id}&fields=opening_hours&key={api_key}"
+    response = requests.get(url)
+    data = response.json()
+    if "result" in data and "opening_hours" in data["result"]:
+        return 1 if data["result"]["opening_hours"].get("open_now", False) else 0
+    return 0  # Default to closed if info not available
+
+# -------------------------------
+# Simulate dataset with store_open_status feature
+# -------------------------------
+np.random.seed(42)
+n_samples = 1000
+
+data = {
+    'auditor_location_distance': np.random.randint(1, 50, n_samples),  # km from store
+    'auditor_availability': np.random.choice([0, 1], n_samples),       # 0=busy, 1=available
+    'auditor_skill_level': np.random.randint(1, 5, n_samples),         # 1-4 scale
+    'store_risk_score': np.random.randint(1, 10, n_samples),           # 1-10 risk
+    'audit_priority': np.random.randint(1, 5, n_samples),              # 1-4 priority
+    'traffic_condition': np.random.choice([0, 1], n_samples),          # 0=normal, 1=heavy
+    'weather_condition': np.random.choice([0, 1], n_samples),          # 0=clear, 1=bad
+    'audit_deadline_hours': np.random.randint(1, 24, n_samples),       # hours left
+    'store_open_status': np.random.choice([0, 1], n_samples)           # 0=closed, 1=open
+}
+
+# -------------------------------
+# Target: reassignment needed
+# -------------------------------
+target = []
+for i in range(n_samples):
+    score = 0
+    if data['auditor_availability'][i] == 0:
+        score += 2
+    if data['auditor_location_distance'][i] > 30:
+        score += 1
+    if data['store_risk_score'][i] > 7:
+        score += 1
+    if data['audit_priority'][i] > 3:
+        score += 1
+    if data['traffic_condition'][i] == 1 or data['weather_condition'][i] == 1:
+        score += 1
+    if data['audit_deadline_hours'][i] < 4:
+        score += 1
+    if data['store_open_status'][i] == 0:  # Closed store increases reassignment need
+        score += 2
+    target.append(1 if score >= 3 else 0)
+
+df = pd.DataFrame(data)
+df['reassignment_needed'] = target
+
+# -------------------------------
+# Train model
+# -------------------------------
+X = df.drop('reassignment_needed', axis=1)
+y = df['reassignment_needed']
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+model = RandomForestClassifier(n_estimators=100, random_state=42)
+model.fit(X_train, y_train)
+
+# -------------------------------
+# Evaluate model
+# -------------------------------
+print("Model Training Complete")
+print(f"Accuracy: {accuracy_score(y_test, model.predict(X_test)):.2f}")
+print("Confusion Matrix:", confusion_matrix(y_test, model.predict(X_test)))
+print("Classification Report:", classification_report(y_test, model.predict(X_test)))
+
+# -------------------------------
+# Example prediction
+# -------------------------------
+example = pd.DataFrame({
+    'auditor_location_distance': [35],
+    'auditor_availability': [0],
+    'auditor_skill_level': [2],
+    'store_risk_score': [9],
+    'audit_priority': [4],
+    'traffic_condition': [1],
+    'weather_condition': [0],
+    'audit_deadline_hours': [3],
+    'store_open_status': [0]  # Closed
+})
+prediction = model.predict(example)[0]
+print("\nExample Input:", example)
+print(f"Predicted Reassignment Needed: {'Yes' if prediction == 1 else 'No'}")
+
+# -------------------------------
+# Auditor reassignment logic
+# -------------------------------
+shops = [
+    {"id": 1, "name": "Shop A", "status": "closed"},
+    {"id": 2, "name": "Shop B", "status": "open"},
+    {"id": 3, "name": "Shop C", "status": "open"}
+]
+
+auditor = {"name": "John", "assigned_shop": "Shop A"}
+
+if prediction == 1 or auditor["assigned_shop"] == "closed":
+    print("\nReassignment triggered...")
+    new_shop = next((shop for shop in shops if shop["status"] == "open"), None)
+    if new_shop:
+        auditor["assigned_shop"] = new_shop["name"]
+        print(f"Auditor reassigned to {new_shop['name']}")
+    else:
+        print("No open shop available for reassignment.")
+else:
+    print("\nNo reassignment needed. Auditor stays at current shop.")
+
+# -------------------------------
+# User input for prediction
+# -------------------------------
+print("\nEnter details for prediction:")
+auditor_location_distance = int(input("Auditor location distance (km): "))
+auditor_availability = int(input("Auditor availability (0=busy, 1=available): "))
+auditor_skill_level = int(input("Auditor skill level (1-4): "))
+store_risk_score = int(input("Store risk score (1-10): "))
+audit_priority = int(input("Audit priority (1-4): "))
+traffic_condition = int(input("Traffic condition (0=normal, 1=heavy): "))
+weather_condition = int(input("Weather condition (0=clear, 1=bad): "))
+audit_deadline_hours = int(input("Audit deadline hours remaining: "))
+store_open_status = int(input("Store open status (0=closed, 1=open): "))
+
+user_input = pd.DataFrame({
+    'auditor_location_distance': [auditor_location_distance],
+    'auditor_availability': [auditor_availability],
+    'auditor_skill_level': [auditor_skill_level],
+    'store_risk_score': [store_risk_score],
+    'audit_priority': [audit_priority],
+    'traffic_condition': [traffic_condition],
+    'weather_condition': [weather_condition],
+    'audit_deadline_hours': [audit_deadline_hours],
+    'store_open_status': [store_open_status]
+})
+
+prediction = model.predict(user_input)[0]
+print("\nPrediction Result:")
+print(f"Reassignment Needed: {'Yes' if prediction == 1 else 'No'}")
+
+if prediction == 1:
+    new_shop = next((shop for shop in shops if shop["status"] == "open"), None)
+    if new_shop:
+        print(f"Auditor reassigned to {new_shop['name']}")
+    else:
+        print("No open shop available for reassignment.")
