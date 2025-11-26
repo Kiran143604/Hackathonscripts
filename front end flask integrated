@@ -1,1 +1,320 @@
 
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Auditor Reassignment App</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      background: #f4f4f4;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    header {
+      background: #6200ea;
+      color: white;
+      text-align: center;
+      padding: 15px;
+    }
+
+    main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    form {
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+      width: 90%;
+      max-width: 400px;
+    }
+
+    label {
+      display: block;
+      margin-top: 10px;
+      font-weight: bold;
+    }
+
+    input {
+      width: 100%;
+      padding: 8px;
+      margin-top: 5px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+    }
+
+    button {
+      margin-top: 15px;
+      width: 100%;
+      padding: 10px;
+      background: #03dac6;
+      border: none;
+      border-radius: 5px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #018786;
+      color: white;
+    }
+
+    #result {
+      margin-top: 20px;
+      font-size: 18px;
+      font-weight: bold;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Auditor Reassignment Predictor</h1>
+  </header>
+
+  <main>
+    <form id="predictionForm">
+      <label>Auditor Location Distance (km):</label>
+      <input type="number" id="distance" required placeholder="Enter distance">
+
+      <label>Auditor Availability (0=Busy, 1=Available):</label>
+      <input type="number" id="availability" min="0" max="1" required placeholder="Enter Availability">
+
+      <label>Auditor Skill Level (1-4):</label>
+      <input type="number" id="skill" min="1" max="4" required placeholder="Enter Auditor Skill Level">
+
+      <label>Store Risk Score (1-10):</label>
+      <input type="number" id="risk" min="1" max="10" required placeholder="Enter Store Risk Score">
+
+      <label>Audit Priority (1-4):</label>
+      <input type="number" id="priority" min="1" max="4" required placeholder="Enter Audit Priority">
+
+      <label>Traffic Condition (0=Normal, 1=Heavy):</label>
+      <input type="number" id="traffic" min="0" max="1" required placeholder="Enter Traffic Condition">
+
+      <label>Weather Condition (0=Clear, 1=Bad):</label>
+      <input type="number" id="weather" min="0" max="1" required placeholder="Enter Weather Condition">
+
+      <label>Audit Deadline Hours Remaining:</label>
+      <input type="number" id="deadline" required placeholder="Enter Deadline Hours">
+
+      <label>Store Open Status (0=Closed, 1=Open):</label>
+      <input type="number" id="storeStatus" min="0" max="1" required placeholder="Enter Store Status">
+
+      <button type="submit">Predict</button>
+    </form>
+
+    <div id="result"></div>
+  </main>
+
+  <footer>
+    <p>© 2025 Auditor AI</p>
+  </footer>
+
+  <script>
+    document.getElementById('predictionForm').addEventListener('submit', async function(e) {
+      e.preventDefault();
+
+      const payload = {
+        auditor_location_distance: parseInt(document.getElementById('distance').value),
+        auditor_availability: parseInt(document.getElementById('availability').value),
+        auditor_skill_level: parseInt(document.getElementById('skill').value),
+        store_risk_score: parseInt(document.getElementById('risk').value),
+        audit_priority: parseInt(document.getElementById('priority').value),
+        traffic_condition: parseInt(document.getElementById('traffic').value),
+        weather_condition: parseInt(document.getElementById('weather').value),
+        audit_deadline_hours: parseInt(document.getElementById('deadline').value),
+        store_open_status: parseInt(document.getElementById('storeStatus').value)
+      };
+
+      try {
+        const response = await fetch('/predict', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await response.json();
+        if (response.ok) {
+          document.getElementById('result').innerText =
+            `Prediction: ${data.prediction_label}\n` +
+            `Probability: ${data.probability_of_reassignment}\n` +
+            `Heuristic Score: ${data.heuristic_score}\n` +
+            `Reassignment: ${data.reassignment.reassignment_triggered ? 'Triggered' : 'Not Needed'}\n` +
+            (data.reassignment.new_shop ? `New Shop: ${data.reassignment.new_shop}` : '');
+        } else {
+          document.getElementById('result').innerText = `Error: ${data.error}`;
+        }
+      } catch (err) {
+        document.getElementById('result').innerText = `Error: ${err.message}`;
+      }
+    });
+  </script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+And back end code is:
+
+
+
+
+
+from flask import Flask, request, jsonify, render_template
+import numpy as np
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+import requests
+from flask_cors import CORS
+import json
+
+
+
+app = Flask(__name__)
+CORS(app)
+
+# -------------------------------
+# Function to get store open/closed status using Google Places API
+# -------------------------------
+def get_store_status(place_id, api_key):
+    url = f"https://maps.googleapis.com/maps/api/place/details/json?place_id={place_id}&fields=opening_hours&key={api_key}"
+    response = requests.get(url)
+    data = response.json()
+    if "result" in data and "opening_hours" in data["result"]:
+        return 1 if data["result"]["opening_hours"].get("open_now", False) else 0
+    return 0  # Default to closed if info not available
+
+# -------------------------------
+# Simulate dataset and train model
+# -------------------------------
+np.random.seed(42)
+n_samples = 1000
+
+data = {
+    'auditor_location_distance': np.random.randint(1, 50, n_samples),
+    'auditor_availability': np.random.choice([0, 1], n_samples),
+    'auditor_skill_level': np.random.randint(1, 5, n_samples),
+    'store_risk_score': np.random.randint(1, 10, n_samples),
+    'audit_priority': np.random.randint(1, 5, n_samples),
+    'traffic_condition': np.random.choice([0, 1], n_samples),
+    'weather_condition': np.random.choice([0, 1], n_samples),
+    'audit_deadline_hours': np.random.randint(1, 24, n_samples),
+    'store_open_status': np.random.choice([0, 1], n_samples)
+}
+
+target = []
+for i in range(n_samples):
+    score = 0
+    if data['auditor_availability'][i] == 0:
+        score += 2
+    if data['auditor_location_distance'][i] > 30:
+        score += 1
+    if data['store_risk_score'][i] > 7:
+        score += 1
+    if data['audit_priority'][i] > 3:
+        score += 1
+    if data['traffic_condition'][i] == 1 or data['weather_condition'][i] == 1:
+        score += 1
+    if data['audit_deadline_hours'][i] < 4:
+        score += 1
+    if data['store_open_status'][i] == 0:
+        score += 2
+    target.append(1 if score >= 3 else 0)
+
+df = pd.DataFrame(data)
+df['reassignment_needed'] = target
+
+X = df.drop('reassignment_needed', axis=1)
+y = df['reassignment_needed']
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+model = RandomForestClassifier(n_estimators=100, random_state=42)
+model.fit(X_train, y_train)
+
+print("Model trained successfully!")
+
+# -------------------------------
+# Routes
+# -------------------------------
+@app.route('/')
+def index():
+    return render_template('index.html')  # Your HTML file goes in templates folder
+
+@app.route('/predict', methods=['POST'])
+def predict():
+    data = request.get_json()
+    required_fields = [
+        'auditor_location_distance', 'auditor_availability', 'auditor_skill_level',
+        'store_risk_score', 'audit_priority', 'traffic_condition',
+        'weather_condition', 'audit_deadline_hours', 'store_open_status'
+    ]
+
+    # Validate input
+    for field in required_fields:
+        if field not in data:
+            return jsonify({'error': f'Missing field: {field}'}), 400
+
+    # Prepare input for model
+    input_df = pd.DataFrame([{
+        'auditor_location_distance': data['auditor_location_distance'],
+        'auditor_availability': data['auditor_availability'],
+        'auditor_skill_level': data['auditor_skill_level'],
+        'store_risk_score': data['store_risk_score'],
+        'audit_priority': data['audit_priority'],
+        'traffic_condition': data['traffic_condition'],
+        'weather_condition': data['weather_condition'],
+        'audit_deadline_hours': data['audit_deadline_hours'],
+        'store_open_status': data['store_open_status']
+    }])
+
+    prediction = int(model.predict(input_df)[0])
+    probability = round(model.predict_proba(input_df)[0][1], 4)
+
+    # Heuristic score (same as your logic)
+    score = 0
+    if data['auditor_availability'] == 0: score += 2
+    if data['auditor_location_distance'] > 30: score += 1
+    if data['store_risk_score'] > 7: score += 1
+    if data['audit_priority'] > 3: score += 1
+    if data['traffic_condition'] == 1 or data['weather_condition'] == 1: score += 1
+    if data['audit_deadline_hours'] < 4: score += 1
+    if data['store_open_status'] == 0: score += 2
+
+    # Reassignment logic
+    reassignment_triggered = prediction == 1
+    new_shop = "Shop B" if reassignment_triggered else None
+
+    return jsonify({
+        'prediction': prediction,
+        'prediction_label': 'Yes, Reassignment Needed' if prediction == 1 else 'No, Auditor Stays',
+        'probability_of_reassignment': probability,
+        'heuristic_score': score,
+        'reassignment': {
+            'reassignment_triggered': reassignment_triggered,
+            'new_shop': new_shop
+        }
+    })
+
+if __name__ == '__main__':
+    app.run(debug=True)
+
